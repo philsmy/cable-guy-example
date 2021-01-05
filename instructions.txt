@@ -1,5 +1,3 @@
-# README
-
 Rails 6.1 ActionCable
 
 # Create rails app:
@@ -175,5 +173,3 @@ gem 'redis'
 development:
     adapter: redis
 
-# add action meta tag
-    <%= action_cable_meta_tag %>
