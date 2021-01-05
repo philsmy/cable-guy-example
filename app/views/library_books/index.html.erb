@@ -1,0 +1,11 @@
+<h1>Our Books</h1>
+
+<% if !@books.blank? %>
+  <% for book in @books %>
+  <div data-controller='book-status' data-book-status-bookid="<%= book.id%>">
+    <div data-book-status-target='bookstatus'>
+        <%= render partial: "one_book", locals: {book: book}%>
+    </div>
+  </div>
+   <% end %>
+<% end %>
