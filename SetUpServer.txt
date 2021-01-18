@@ -159,6 +159,7 @@ set :rbenv_ruby, '2.7.2' # or whatever version you chose
 # config/deploy.rb
 set :application, "yourapp"
 set :repo_url, "git@github.com:philsmy/cable-guy-example.git"
+set :branch, 'main'
 
 # Deploy to the user's home directory
 set :deploy_to, "/home/deploy/#{fetch :application}"
