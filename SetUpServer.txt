@@ -1,5 +1,5 @@
 # set up user
-ssh root@143.110.148.11
+ssh root@yourserverip
 adduser deploy
 adduser deploy sudo
 vi /etc/ssh/sshd_config
@@ -7,10 +7,10 @@ enable PasswordAuthentication
 save
 systemctl restart sshd
 exit
-ssh-copy-id deploy@143.110.148.11
+ssh-copy-id deploy@yourserverip
 
 # log in
-ssh deploy@143.110.148.11
+ssh deploy@yourserverip
 
 # basic packages
 # Adding Node.js repository
@@ -59,7 +59,7 @@ sudo rm /etc/nginx/sites-enabled/default
 
 # install certbot
 sudo apt install certbot python3-certbot-nginx
-sudo certbot --server https://acme-v02.api.letsencrypt.org/directory -d *.fearofbeingaverage.com --manual --preferred-challenges dns-01 certonly
+sudo certbot certonly --nginx
 
 # install ufw
 sudo ufw default allow outgoing
@@ -67,34 +67,27 @@ sudo ufw allow 'Nginx Full'
 sudo ufw allow OpenSSH
 
 
-sudo vim /etc/nginx/sites-enabled/cableguy
+sudo vim /etc/nginx/sites-enabled/yourapp
 # basic for port 80
 server {
   listen 80 ;
   listen [::]:80;
-  server_name fearofbeingaverage.com;
-  return 301 https://www.fearofbeingaverage.com$request_uri;
+  server_name www.yourdomainname;
+  return 301 https://yourdomainname$request_uri;
 }
 
-server {
-  listen 80;
-  listen [::]:80;
-  server_name *.fearofbeingaverage.com;
-  return 301 https://$host$request_uri;
-}
-
-sudo vim /etc/nginx/sites-enabled/cableguy-ssl
-# /etc/nginx/sites-enabled/cableguy-ssl
+sudo vim /etc/nginx/sites-enabled/yourapp-ssl
+# /etc/nginx/sites-enabled/yourapp-ssl
 
 server {
   listen 443 ssl;
 
-  server_name *.fearofbeingaverage.com;
+  server_name *.yourdomainname;
   
-	ssl_certificate /etc/letsencrypt/live/fearofbeingaverage.com/fullchain.pem;
-	ssl_certificate_key  /etc/letsencrypt/live/fearofbeingaverage.com/privkey.pem;
+	ssl_certificate /etc/letsencrypt/live/yourdomainname-0002/fullchain.pem;
+	ssl_certificate_key  /etc/letsencrypt/live/yourdomainname-0002/privkey.pem;
 
-  root /home/deploy/fearofbeingaverage/current/public;
+  root /home/deploy/yourapp/current/public;
 
   passenger_enabled on;
   passenger_app_env production;
@@ -103,7 +96,7 @@ server {
   error_log /var/log/nginx/app.error.log;
 
   location /cable {
-    passenger_app_group_name fearofbeingaverage_websocket;
+    passenger_app_group_name yourapp_websocket;
     passenger_force_max_concurrent_requests_per_process 0;
   }
 
@@ -134,8 +127,15 @@ sudo service nginx reload
 sudo apt-get install postgresql postgresql-contrib libpq-dev
 sudo su - postgres
 createuser --pwprompt deploy
-createdb -O deploy cableguy
+createdb -O deploy yourapp
 exit
+
+vi /home/deploy/yourapp/.rbenv-vars
+
+# .rbenv-vars
+# For Postgres
+DATABASE_URL=postgresql://deploy:v5nns1s6SUE5@127.0.0.1/yourapp
+SECRET_KEY_BASE=785654123
 
 
 # capistrano
@@ -157,8 +157,8 @@ set :rbenv_type, :user
 set :rbenv_ruby, '2.7.2' # or whatever version you chose
 
 # config/deploy.rb
-set :application, "cableguy"
-set :repo_url, "git@github.com:username/cableguy.git"
+set :application, "yourapp"
+set :repo_url, "git@github.com:philsmy/cable-guy-example.git"
 
 # Deploy to the user's home directory
 set :deploy_to, "/home/deploy/#{fetch :application}"
@@ -169,25 +169,12 @@ append :linked_dirs, 'log', 'tmp/pids', 'tmp/cache', 'tmp/sockets', 'vendor/bund
 set :keep_releases, 5
 
 # config/deploy/production
-server '143.110.148.11', user: 'deploy', roles: %w{app db web}
-
-ssh deploy@143.110.148.11
-vi /home/deploy/cableguy/.rbenv-vars
-
-# .rbenv-vars
-# For Postgres
-DATABASE_URL=postgresql://deploy:v5nns1s6SUE5@127.0.0.1/cableguy
-
-# For MySQL
-DATABASE_URL=mysql2://deploy:$omeFancyPassword123@localhost/cableguy
-
-RAILS_MASTER_KEY=sillystuff
-SECRET_KEY_BASE=785654123
+server 'yourserverip', user: 'deploy', roles: %w{app db web}
 
 
 cap production deploy
 
 # add console file
 export RAILS_ENV=production
-cd /home/deploy/cableguy/current
+cd /home/deploy/yourapp/current
 bundle exec rails c
