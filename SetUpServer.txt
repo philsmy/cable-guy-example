@@ -187,18 +187,6 @@ SECRET_KEY_BASE=785654123
 
 cap production deploy
 
-# install pmm
-cd /tmp
-wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
-sudo dpkg -i percona-release_latest.generic_all.deb
-sudo percona-release enable tools release
-sudo apt update && sudo apt -y upgrade && sudo apt-get autoclean && sudo apt-get -y autoremove
-sudo apt-get install pmm-client
-sudo pmm-admin config --server 198.211.96.239:8443 --server-user pmm --server-password YOURSECUREPW --server-insecure-ssl
-sudo pmm-admin add linux:metrics
-sudo ufw allow from 198.211.96.239 to any port 42000
-sudo pmm-admin check-network
-
 # add console file
 export RAILS_ENV=production
 cd /home/deploy/cableguy/current
