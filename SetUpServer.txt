@@ -1,0 +1,205 @@
+# set up user
+ssh root@143.110.148.11
+adduser deploy
+adduser deploy sudo
+vi /etc/ssh/sshd_config
+enable PasswordAuthentication
+save
+systemctl restart sshd
+exit
+ssh-copy-id deploy@143.110.148.11
+
+# log in
+ssh deploy@143.110.148.11
+
+# basic packages
+# Adding Node.js repository
+curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+# Adding Yarn repository
+curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+sudo add-apt-repository ppa:chris-lea/redis-server
+# Refresh our packages list with the new repositories
+sudo apt-get update
+# Install our dependencies for compiiling Ruby along with Node.js and Yarn
+sudo apt-get install git-core curl zlib1g-dev build-essential libssl-dev libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev libcurl4-openssl-dev software-properties-common libffi-dev dirmngr gnupg apt-transport-https ca-certificates redis-server redis-tools nodejs yarn
+
+#install ruby
+git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
+echo 'eval "$(rbenv init -)"' >> ~/.bashrc
+git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' >> ~/.bashrc
+git clone https://github.com/rbenv/rbenv-vars.git ~/.rbenv/plugins/rbenv-vars
+exec $SHELL
+rbenv install 2.7.2
+rbenv global 2.7.2
+ruby -v
+# ruby 2.7.2
+# This installs the latest Bundler, currently 2.x.
+gem install bundler
+# For older apps that require Bundler 1.x, you can install it as well.
+bundle -v
+# Bundler version 2.0
+
+sudo apt update && sudo apt -y upgrade && sudo apt-get autoclean && sudo apt-get -y autoremove
+
+# nginx/passenger
+sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 561F9B9CAC40B2F7
+sudo sh -c 'echo deb https://oss-binaries.phusionpassenger.com/apt/passenger focal main > /etc/apt/sources.list.d/passenger.list'
+sudo apt-get update
+sudo apt-get install -y nginx-extras libnginx-mod-http-passenger
+if [ ! -f /etc/nginx/modules-enabled/50-mod-http-passenger.conf ]; then sudo ln -s /usr/share/nginx/modules-available/mod-http-passenger.load /etc/nginx/modules-enabled/50-mod-http-passenger.conf ; fi
+sudo ls /etc/nginx/conf.d/mod-http-passenger.conf
+sudo vim /etc/nginx/conf.d/mod-http-passenger.conf
+# add line
+passenger_ruby /home/deploy/.rbenv/shims/ruby;
+sudo service nginx start
+sudo rm /etc/nginx/sites-enabled/default
+
+# install certbot
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --server https://acme-v02.api.letsencrypt.org/directory -d *.fearofbeingaverage.com --manual --preferred-challenges dns-01 certonly
+
+# install ufw
+sudo ufw default allow outgoing
+sudo ufw allow 'Nginx Full'
+sudo ufw allow OpenSSH
+
+
+sudo vim /etc/nginx/sites-enabled/cableguy
+# basic for port 80
+server {
+  listen 80 ;
+  listen [::]:80;
+  server_name fearofbeingaverage.com;
+  return 301 https://www.fearofbeingaverage.com$request_uri;
+}
+
+server {
+  listen 80;
+  listen [::]:80;
+  server_name *.fearofbeingaverage.com;
+  return 301 https://$host$request_uri;
+}
+
+sudo vim /etc/nginx/sites-enabled/cableguy-ssl
+# /etc/nginx/sites-enabled/cableguy-ssl
+
+server {
+  listen 443 ssl;
+
+  server_name *.fearofbeingaverage.com;
+  
+	ssl_certificate /etc/letsencrypt/live/fearofbeingaverage.com/fullchain.pem;
+	ssl_certificate_key  /etc/letsencrypt/live/fearofbeingaverage.com/privkey.pem;
+
+  root /home/deploy/fearofbeingaverage/current/public;
+
+  passenger_enabled on;
+  passenger_app_env production;
+
+  access_log /var/log/nginx/app.access.log;
+  error_log /var/log/nginx/app.error.log;
+
+  location /cable {
+    passenger_app_group_name fearofbeingaverage_websocket;
+    passenger_force_max_concurrent_requests_per_process 0;
+  }
+
+  # Allow uploads up to 100MB in size
+  client_max_body_size 100m;
+
+  location ~ ^/(assets|packs) {
+    expires max;
+    gzip_static on;
+  }
+
+  	# this rewrites all the requests to the maintenance.html
+  	# page if it exists in the doc root. This is for capistrano's
+  	# disable web task
+  	if (-f $document_root/system/maintenance.html)
+  	{
+  	  rewrite  ^(.*)$  /system/maintenance.html last;
+  	  break;
+  	}
+
+}
+
+
+sudo service nginx reload
+
+##### CREATE DATABASE #####
+## best to do managed, but for now local ##
+sudo apt-get install postgresql postgresql-contrib libpq-dev
+sudo su - postgres
+createuser --pwprompt deploy
+createdb -O deploy cableguy
+exit
+
+
+# capistrano
+# gemfile
+gem 'capistrano', '~> 3.11'
+gem 'capistrano-rails', '~> 1.4'
+gem 'capistrano-passenger', '~> 0.2.0'
+gem 'capistrano-rbenv', '~> 2.1', '>= 2.1.4'
+
+bundle
+cap install STAGES=production
+
+# edit Capfile
+require 'capistrano/rails'
+require 'capistrano/passenger'
+require 'capistrano/rbenv'
+
+set :rbenv_type, :user
+set :rbenv_ruby, '2.7.2' # or whatever version you chose
+
+# config/deploy.rb
+set :application, "cableguy"
+set :repo_url, "git@github.com:username/cableguy.git"
+
+# Deploy to the user's home directory
+set :deploy_to, "/home/deploy/#{fetch :application}"
+
+append :linked_dirs, 'log', 'tmp/pids', 'tmp/cache', 'tmp/sockets', 'vendor/bundle', '.bundle', 'public/system', 'public/uploads'
+
+# Only keep the last 5 releases to save disk space
+set :keep_releases, 5
+
+# config/deploy/production
+server '143.110.148.11', user: 'deploy', roles: %w{app db web}
+
+ssh deploy@143.110.148.11
+vi /home/deploy/cableguy/.rbenv-vars
+
+# .rbenv-vars
+# For Postgres
+DATABASE_URL=postgresql://deploy:v5nns1s6SUE5@127.0.0.1/cableguy
+
+# For MySQL
+DATABASE_URL=mysql2://deploy:$omeFancyPassword123@localhost/cableguy
+
+RAILS_MASTER_KEY=sillystuff
+SECRET_KEY_BASE=785654123
+
+
+cap production deploy
+
+# install pmm
+cd /tmp
+wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+sudo dpkg -i percona-release_latest.generic_all.deb
+sudo percona-release enable tools release
+sudo apt update && sudo apt -y upgrade && sudo apt-get autoclean && sudo apt-get -y autoremove
+sudo apt-get install pmm-client
+sudo pmm-admin config --server 198.211.96.239:8443 --server-user pmm --server-password YOURSECUREPW --server-insecure-ssl
+sudo pmm-admin add linux:metrics
+sudo ufw allow from 198.211.96.239 to any port 42000
+sudo pmm-admin check-network
+
+# add console file
+export RAILS_ENV=production
+cd /home/deploy/cableguy/current
+bundle exec rails c
